@@ -3,113 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SCT TERMINAL PRO - OCTA</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-
+    <title>SCT RADAR OCTA</title>
+    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body { background: #0b0e11; color: white; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; }
-        .header { background: #1e2329; padding: 15px; border-radius: 10px; border-left: 5px solid #f0b90b; margin-bottom: 10px; }
-        #status-box { 
-            padding: 20px; border-radius: 10px; font-weight: bold; text-align: center; 
-            margin-bottom: 10px; background: #2b3139; font-size: 18px; transition: 0.3s;
-        }
-        .buy-now { background: #00c076 !important; color: white; box-shadow: 0 0 15px #00c076; animation: blink 1s infinite; }
-        .danger { background: #cf304a !important; color: white; box-shadow: 0 0 15px #cf304a; }
-        #chart { width: 100%; height: 350px; border-radius: 10px; overflow: hidden; background: #161a1e; }
-        .info-panel { display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px; color: #848e9c; }
-        @keyframes blink { 0% {opacity: 1;} 50% {opacity: 0.7;} 100% {opacity: 1;} }
+        body { background: #0b0e11; color: white; font-family: sans-serif; margin: 0; padding: 10px; }
+        .header { background: #1e2329; padding: 10px; border-radius: 8px; border-left: 5px solid #f0b90b; margin-bottom: 10px; }
+        #status-box { padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px; background: #2b3139; font-weight: bold; }
+        #chart { width: 100%; height: 300px; background: #161a1e; border-radius: 8px; }
+        .buy { background: #00c076 !important; color: white; }
+        .danger { background: #cf304a !important; color: white; }
+        .stats { display: flex; justify-content: space-between; font-size: 11px; margin-top: 10px; color: #848e9c; }
     </style>
 </head>
 <body>
-
     <div class="header">
-        <h2 style="margin:0;">SCT RADAR OCTA</h2>
-        <p style="font-size: 12px; color: #f0b90b;">Target: SIREN | Leverage: 16x | Goal: Rp100k</p>
+        <h3 style="margin:0;">SCT RADAR OCTA</h3>
+        <small>Target SIREN | Leverage 16x</small>
     </div>
 
-    <div id="status-box">MENGHUBUNGKAN KE BINANCE...</div>
-    
+    <div id="status-box">MENGHUBUNGKAN...</div>
     <div id="chart"></div>
-
-    <div class="info-panel">
-        <span>Entry Target: $1.45</span>
-        <span>Stop Loss: $1.385</span>
-        <span id="live-price">Loading...</span>
+    
+    <div class="stats">
+        <span>Entry: $1.45</span>
+        <span id="live-price">Wait...</span>
+        <span>SL: $1.385</span>
     </div>
 
     <script>
-        // 1. KONFIGURASI FIREBASE OCTA
-        const firebaseConfig = {
-            apiKey: "AIzaSyDO8hsgUIrq7CN_96RdPSSFd1okLiTtw0I",
-            authDomain: "sct-trading-octa.firebaseapp.com",
-            projectId: "sct-trading-octa",
-            storageBucket: "sct-trading-octa.firebasestorage.app",
-            messagingSenderId: "753188973334",
-            appId: "1:753188973334:web:aa4db9efd3ddd521cdbe37"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-
-        // 2. INISIALISASI CHART
-        const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+        // Inisialisasi Chart
+        const chartElement = document.getElementById('chart');
+        const chart = LightweightCharts.createChart(chartElement, {
             layout: { backgroundColor: '#161a1e', textColor: '#d1d4dc' },
             grid: { vertLines: { color: '#2b2f3a' }, horzLines: { color: '#2b2f3a' } },
-            timeScale: { borderColor: '#485c7b' }
+            timeScale: { borderColor: '#485c7b', timeVisible: true }
         });
         const candleSeries = chart.addCandlestickSeries();
 
-        // 3. LOGIKA SCT & WEBSOCKET
         const statusBox = document.getElementById('status-box');
         const priceDisplay = document.getElementById('live-price');
-        const symbol = 'sirenusdt';
-        const socket = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1m`);
 
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            const k = data.k;
-            const candle = {
-                time: k.t / 1000,
-                open: parseFloat(k.o),
-                high: parseFloat(k.h),
-                low: parseFloat(k.l),
-                close: parseFloat(k.c),
+        // Koneksi Binance WebSocket
+        const connect = () => {
+            const socket = new WebSocket('wss://stream.binance.com:9443/ws/sirenusdt@kline_1m');
+            
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const k = data.k;
+                const candle = {
+                    time: k.t / 1000,
+                    open: parseFloat(k.o),
+                    high: parseFloat(k.h),
+                    low: parseFloat(k.l),
+                    close: parseFloat(k.c)
+                };
+                candleSeries.update(candle);
+                priceDisplay.innerText = "$" + candle.close;
+
+                // LOGIKA SCT (Smart Chart Trap)
+                const body = Math.abs(candle.close - candle.open);
+                const lowerWick = Math.min(candle.open, candle.close) - candle.low;
+                const upperWick = candle.high - Math.max(candle.open, candle.close);
+
+                if (candle.close <= 1.50 && lowerWick > body * 1.3) {
+                    statusBox.innerHTML = "🚀 WAKTUNYA MASUK! (SCT BUY)";
+                    statusBox.className = "buy";
+                } else if (upperWick > body * 1.8) {
+                    statusBox.innerHTML = "⚠️ JANGAN LONG! (REJECTION)";
+                    statusBox.className = "danger";
+                } else {
+                    statusBox.innerHTML = "MONITORING MARKET...";
+                    statusBox.className = "";
+                }
             };
-            candleSeries.update(candle);
-            priceDisplay.innerText = "Price: $" + candle.close;
 
-            // ANALISIS METODE SCT (Smart Chart Trap)
-            const body = Math.abs(candle.close - candle.open);
-            const lowerWick = Math.min(candle.open, candle.close) - candle.low;
-            const upperWick = candle.high - Math.max(candle.open, candle.close);
-
-            // Kondisi Lampu Hijau: Waktunya Masuk (SCT Buy)
-            if (candle.close <= 1.50 && lowerWick > body * 1.5) {
-                statusBox.innerHTML = "🚀 WAKTUNYA MASUK SEKARANG!";
-                statusBox.className = "buy-now";
-                saveToFirebase("BUY_SIGNAL", candle.close);
-            } 
-            // Kondisi Lampu Merah: Bahaya (Jebakan Atas)
-            else if (upperWick > body * 2) {
-                statusBox.innerHTML = "⚠️ ATTENTION: JANGAN LONG!";
-                statusBox.className = "danger";
-                saveToFirebase("DANGER_REJECTION", candle.close);
-            }
-            else {
-                statusBox.innerHTML = "MENCARI MOMENTUM SCT...";
-                statusBox.className = "";
-            }
+            socket.onclose = () => {
+                statusBox.innerHTML = "RECONNECTING...";
+                setTimeout(connect, 3000);
+            };
         };
 
-        // 4. FUNGSI SIMPAN KE FIREBASE
-        function saveToFirebase(type, price) {
-            db.collection("alerts").add({
-                type: type,
-                price: price,
-                time: new Date().toLocaleString()
-            });
-        }
+        connect();
     </script>
 </body>
 </html>
