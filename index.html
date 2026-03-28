@@ -3,25 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SCT RADAR OCTA</title>
-    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+    <title>SCT TERMINAL - OCTA</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body { background: #0b0e11; color: white; font-family: sans-serif; margin: 0; padding: 10px; }
-        .header { background: #1e2329; padding: 10px; border-radius: 8px; border-left: 5px solid #f0b90b; margin-bottom: 10px; }
-        #status-box { padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px; background: #2b3139; font-weight: bold; }
-        #chart { width: 100%; height: 300px; background: #161a1e; border-radius: 8px; }
-        .buy { background: #00c076 !important; color: white; }
-        .danger { background: #cf304a !important; color: white; }
-        .stats { display: flex; justify-content: space-between; font-size: 11px; margin-top: 10px; color: #848e9c; }
+        .header { background: #1e2329; padding: 10px; border-radius: 8px; border-left: 5px solid #f0b90b; }
+        #status-box { padding: 15px; border-radius: 8px; text-align: center; margin: 10px 0; background: #2b3139; font-weight: bold; font-size: 1.2em; }
+        #chart { width: 100%; height: 350px; background: #161a1e; border-radius: 8px; }
+        .buy { background: #00c076 !important; color: white; box-shadow: 0 0 10px #00c076; }
+        .danger { background: #cf304a !important; color: white; box-shadow: 0 0 10px #cf304a; }
+        .stats { display: flex; justify-content: space-between; font-size: 12px; margin-top: 10px; color: #848e9c; }
     </style>
 </head>
 <body>
     <div class="header">
         <h3 style="margin:0;">SCT RADAR OCTA</h3>
-        <small>Target SIREN | Leverage 16x</small>
+        <small>Target: SIREN | Leverage 16x</small>
     </div>
 
-    <div id="status-box">MENGHUBUNGKAN...</div>
+    <div id="status-box">MEMULAI KONEKSI...</div>
     <div id="chart"></div>
     
     <div class="stats">
@@ -31,22 +31,44 @@
     </div>
 
     <script>
-        // Inisialisasi Chart
         const chartElement = document.getElementById('chart');
-        const chart = LightweightCharts.createChart(chartElement, {
-            layout: { backgroundColor: '#161a1e', textColor: '#d1d4dc' },
-            grid: { vertLines: { color: '#2b2f3a' }, horzLines: { color: '#2b2f3a' } },
-            timeScale: { borderColor: '#485c7b', timeVisible: true }
-        });
-        const candleSeries = chart.addCandlestickSeries();
-
         const statusBox = document.getElementById('status-box');
         const priceDisplay = document.getElementById('live-price');
 
-        // Koneksi Binance WebSocket
-        const connect = () => {
+        // Buat Chart
+        const chart = LightweightCharts.createChart(chartElement, {
+            layout: { backgroundColor: '#161a1e', textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2b2f3a' }, horzLines: { color: '#2b2f3a' } },
+            timeScale: { borderColor: '#485c7b', timeVisible: true, secondsVisible: false }
+        });
+        const candleSeries = chart.addCandlestickSeries();
+
+        // Fungsi Koneksi Binance
+        function startStream() {
+            // Gunakan API REST dulu untuk ambil data awal (biar chart tidak kosong)
+            fetch('https://api.binance.com/api/v3/klines?symbol=SIRENUSDT&interval=1m&limit=100')
+                .then(res => res.json())
+                .then(data => {
+                    const history = data.map(d => ({
+                        time: d[0] / 1000,
+                        open: parseFloat(d[1]),
+                        high: parseFloat(d[2]),
+                        low: parseFloat(d[3]),
+                        close: parseFloat(d[4])
+                    }));
+                    candleSeries.setData(history);
+                    connectWebSocket(); // Baru sambung ke Live Data
+                })
+                .catch(err => {
+                    statusBox.innerText = "ERROR API: " + err.message;
+                });
+        }
+
+        function connectWebSocket() {
             const socket = new WebSocket('wss://stream.binance.com:9443/ws/sirenusdt@kline_1m');
             
+            socket.onopen = () => { statusBox.innerText = "MONITORING MARKET..."; };
+
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 const k = data.k;
@@ -65,25 +87,29 @@
                 const lowerWick = Math.min(candle.open, candle.close) - candle.low;
                 const upperWick = candle.high - Math.max(candle.open, candle.close);
 
-                if (candle.close <= 1.50 && lowerWick > body * 1.3) {
+                // Lampu Hijau: Sinyal Beli di bawah 1.50 dengan ekor panjang
+                if (candle.close <= 1.50 && lowerWick > (body * 1.2)) {
                     statusBox.innerHTML = "🚀 WAKTUNYA MASUK! (SCT BUY)";
                     statusBox.className = "buy";
-                } else if (upperWick > body * 1.8) {
+                } 
+                // Lampu Merah: Bahaya Rejection Atas
+                else if (upperWick > (body * 1.5)) {
                     statusBox.innerHTML = "⚠️ JANGAN LONG! (REJECTION)";
                     statusBox.className = "danger";
-                } else {
-                    statusBox.innerHTML = "MONITORING MARKET...";
+                } 
+                else {
+                    statusBox.innerHTML = "MENCARI MOMENTUM...";
                     statusBox.className = "";
                 }
             };
 
             socket.onclose = () => {
-                statusBox.innerHTML = "RECONNECTING...";
-                setTimeout(connect, 3000);
+                statusBox.innerText = "KONEKSI TERPUTUS, MENGULANG...";
+                setTimeout(connectWebSocket, 2000);
             };
-        };
+        }
 
-        connect();
+        startStream();
     </script>
 </body>
 </html>
