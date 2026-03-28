@@ -1,0 +1,1 @@
+# Trading-metode-sct
