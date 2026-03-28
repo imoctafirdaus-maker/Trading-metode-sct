@@ -1,115 +1,76 @@
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
-    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SCT TERMINAL - OCTA</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <title>SCT RADAR</title>
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body { background: #0b0e11; color: white; font-family: sans-serif; margin: 0; padding: 10px; }
-        .header { background: #1e2329; padding: 10px; border-radius: 8px; border-left: 5px solid #f0b90b; }
-        #status-box { padding: 15px; border-radius: 8px; text-align: center; margin: 10px 0; background: #2b3139; font-weight: bold; font-size: 1.2em; }
-        #chart { width: 100%; height: 350px; background: #161a1e; border-radius: 8px; }
-        .buy { background: #00c076 !important; color: white; box-shadow: 0 0 10px #00c076; }
-        .danger { background: #cf304a !important; color: white; box-shadow: 0 0 10px #cf304a; }
-        .stats { display: flex; justify-content: space-between; font-size: 12px; margin-top: 10px; color: #848e9c; }
+        #status-box { padding: 20px; text-align: center; border-radius: 10px; background: #2b3139; font-weight: bold; margin-bottom: 10px; font-size: 18px; }
+        #chart { width: 100%; height: 350px; background: #161a1e; border-radius: 10px; }
+        .buy { background: #00c076 !important; }
+        .danger { background: #cf304a !important; }
+        .info { display: flex; justify-content: space-between; margin-top: 10px; color: #848e9c; font-size: 12px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h3 style="margin:0;">SCT RADAR OCTA</h3>
-        <small>Target: SIREN | Leverage 16x</small>
-    </div>
-
-    <div id="status-box">MEMULAI KONEKSI...</div>
+    <div id="status-box">MENGHUBUNGKAN KE BINANCE...</div>
     <div id="chart"></div>
-    
-    <div class="stats">
-        <span>Entry: $1.45</span>
-        <span id="live-price">Wait...</span>
+    <div class="info">
+        <span>Target: SIREN ($1.45)</span>
+        <span id="price">Loading...</span>
         <span>SL: $1.385</span>
     </div>
 
     <script>
-        const chartElement = document.getElementById('chart');
         const statusBox = document.getElementById('status-box');
-        const priceDisplay = document.getElementById('live-price');
-
-        // Buat Chart
-        const chart = LightweightCharts.createChart(chartElement, {
+        const priceText = document.getElementById('price');
+        
+        // 1. Setup Chart
+        const chart = LightweightCharts.createChart(document.getElementById('chart'), {
             layout: { backgroundColor: '#161a1e', textColor: '#d1d4dc' },
             grid: { vertLines: { color: '#2b2f3a' }, horzLines: { color: '#2b2f3a' } },
-            timeScale: { borderColor: '#485c7b', timeVisible: true, secondsVisible: false }
         });
         const candleSeries = chart.addCandlestickSeries();
 
-        // Fungsi Koneksi Binance
-        function startStream() {
-            // Gunakan API REST dulu untuk ambil data awal (biar chart tidak kosong)
-            fetch('https://api.binance.com/api/v3/klines?symbol=SIRENUSDT&interval=1m&limit=100')
-                .then(res => res.json())
-                .then(data => {
-                    const history = data.map(d => ({
-                        time: d[0] / 1000,
-                        open: parseFloat(d[1]),
-                        high: parseFloat(d[2]),
-                        low: parseFloat(d[3]),
-                        close: parseFloat(d[4])
-                    }));
-                    candleSeries.setData(history);
-                    connectWebSocket(); // Baru sambung ke Live Data
-                })
-                .catch(err => {
-                    statusBox.innerText = "ERROR API: " + err.message;
-                });
-        }
+        // 2. Ambil Data Awal (Biar tidak putih kosong)
+        fetch('https://api.binance.com/api/v3/klines?symbol=SIRENUSDT&interval=1m&limit=50')
+            .then(res => res.json())
+            .then(data => {
+                const formattedData = data.map(d => ({
+                    time: d[0] / 1000, open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4])
+                }));
+                candleSeries.setData(formattedData);
+                startLive();
+            });
 
-        function connectWebSocket() {
-            const socket = new WebSocket('wss://stream.binance.com:9443/ws/sirenusdt@kline_1m');
-            
-            socket.onopen = () => { statusBox.innerText = "MONITORING MARKET..."; };
-
-            socket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                const k = data.k;
-                const candle = {
-                    time: k.t / 1000,
-                    open: parseFloat(k.o),
-                    high: parseFloat(k.h),
-                    low: parseFloat(k.l),
-                    close: parseFloat(k.c)
-                };
+        // 3. Data Live & Logika SCT
+        function startLive() {
+            const ws = new WebSocket('wss://stream.binance.com:9443/ws/sirenusdt@kline_1m');
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                const k = msg.k;
+                const candle = { time: k.t / 1000, open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c) };
+                
                 candleSeries.update(candle);
-                priceDisplay.innerText = "$" + candle.close;
+                priceText.innerText = "$" + candle.close;
+                statusBox.innerText = "MONITORING SCT...";
 
                 // LOGIKA SCT (Smart Chart Trap)
                 const body = Math.abs(candle.close - candle.open);
                 const lowerWick = Math.min(candle.open, candle.close) - candle.low;
-                const upperWick = candle.high - Math.max(candle.open, candle.close);
-
-                // Lampu Hijau: Sinyal Beli di bawah 1.50 dengan ekor panjang
-                if (candle.close <= 1.50 && lowerWick > (body * 1.2)) {
-                    statusBox.innerHTML = "🚀 WAKTUNYA MASUK! (SCT BUY)";
+                
+                if (candle.close <= 1.50 && lowerWick > body) {
+                    statusBox.innerText = "🚀 WAKTUNYA MASUK! (SCT BUY)";
                     statusBox.className = "buy";
-                } 
-                // Lampu Merah: Bahaya Rejection Atas
-                else if (upperWick > (body * 1.5)) {
-                    statusBox.innerHTML = "⚠️ JANGAN LONG! (REJECTION)";
+                } else if (candle.close > candle.open * 1.05) {
+                    statusBox.innerText = "⚠️ JANGAN KEJAR! (OVERBOUGHT)";
                     statusBox.className = "danger";
-                } 
-                else {
-                    statusBox.innerHTML = "MENCARI MOMENTUM...";
+                } else {
                     statusBox.className = "";
                 }
             };
-
-            socket.onclose = () => {
-                statusBox.innerText = "KONEKSI TERPUTUS, MENGULANG...";
-                setTimeout(connectWebSocket, 2000);
-            };
         }
-
-        startStream();
     </script>
 </body>
 </html>
