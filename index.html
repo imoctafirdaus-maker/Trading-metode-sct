@@ -2,14 +2,13 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SMC PRO TERMINAL - Real-Time Analysis</title>
     
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;900&display=swap" rel="stylesheet">
 
     <style>
-        /* CSS SECTION: PREMIUM DARK UI */
         :root {
             --bg-dark: #080a0c;
             --bg-card: #111418;
@@ -34,7 +33,6 @@
             height: 100vh;
         }
 
-        /* Topbar */
         header {
             grid-column: 1 / 3;
             background: var(--bg-card);
@@ -45,35 +43,33 @@
 
         .logo { font-weight: 900; letter-spacing: 2px; font-size: 1.2rem; }
         .logo span { color: var(--neon-green); }
-
-        .controls { display: flex; gap: 15px; align-items: center; }
+        .controls { display: flex; gap: 10px; align-items: center; }
         
         select, .tf-btn {
             background: #1e222d; border: 1px solid var(--border-color);
-            color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer;
+            color: white; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
         }
 
-        /* Sidebar / Entry Panel */
         .sidebar {
             background: var(--bg-card);
             border-right: 1px solid var(--border-color);
-            padding: 20px;
-            display: flex; flex-direction: column; gap: 20px;
+            padding: 15px;
+            display: flex; flex-direction: column; gap: 15px;
+            overflow-y: auto;
         }
 
         .panel-card {
-            background: #1e222d; border-radius: 8px; padding: 15px;
+            background: #1e222d; border-radius: 8px; padding: 12px;
             border-left: 4px solid var(--text-dim);
         }
 
         .panel-card.active-buy { border-left-color: var(--neon-green); box-shadow: 0 0 15px rgba(0, 255, 136, 0.1); }
         .panel-card.active-sell { border-left-color: var(--neon-red); box-shadow: 0 0 15px rgba(255, 62, 62, 0.1); }
 
-        .label { color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; }
-        .value { font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; display: block; margin-top: 5px; }
+        .label { color: var(--text-dim); font-size: 0.7rem; text-transform: uppercase; }
+        .value { font-family: 'JetBrains Mono', monospace; font-size: 1rem; display: block; margin-top: 5px; }
 
-        /* Chart Area */
-        #chart-container { position: relative; width: 100%; height: 100%; }
+        #chart-container { position: relative; width: 100%; height: 100%; background: var(--bg-dark); }
         #tv-chart { width: 100%; height: 100%; }
 
         .status-dot {
@@ -82,9 +78,11 @@
             box-shadow: 0 0 8px var(--neon-green);
         }
 
-        .probability-badge {
-            background: rgba(0, 255, 136, 0.1); color: var(--neon-green);
-            padding: 4px 8px; border-radius: 4px; font-weight: bold;
+        @media (max-width: 768px) {
+            .dashboard { grid-template-columns: 1fr; grid-template-rows: 60px 180px 1fr; }
+            .sidebar { border-right: none; border-bottom: 1px solid var(--border-color); flex-direction: row; overflow-x: auto; padding: 10px; }
+            .panel-card { min-width: 150px; padding: 8px; }
+            .logo { font-size: 1rem; }
         }
     </style>
 </head>
@@ -92,52 +90,29 @@
 
 <div class="dashboard">
     <header>
-        <div class="logo">SMC<span>TERMINAL</span></div>
+        <div class="logo">SMC<span>PRO</span></div>
         <div class="controls">
             <select id="pairSelect">
                 <option value="BTCUSDT">BTC/USDT</option>
                 <option value="ETHUSDT">ETH/USDT</option>
                 <option value="SOLUSDT">SOL/USDT</option>
-                <option value="XRPUSDT">XRP/USDT</option>
             </select>
-            <div class="timeframes">
-                <button class="tf-btn" onclick="changeTF('1m')">1m</button>
-                <button class="tf-btn" onclick="changeTF('5m')">5m</button>
-                <button class="tf-btn" onclick="changeTF('15m')">15m</button>
-                <button class="tf-btn" onclick="changeTF('1h')">1H</button>
-            </div>
-            <div id="live-indicator"><span class="status-dot"></span> LIVE DATA</div>
+            <div id="live-indicator"><span class="status-dot"></span> <small>LIVE</small></div>
         </div>
     </header>
 
     <aside class="sidebar">
-        <h3 style="margin:0; font-size: 1rem;">SMC SIGNAL ENGINE</h3>
-        
         <div id="signalCard" class="panel-card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span class="label">Setup Bias</span>
-                <span id="probVal" class="probability-badge">--%</span>
-            </div>
-            <span id="signalText" class="value" style="font-weight: bold;">WAITING...</span>
+            <span class="label">SMC Bias</span>
+            <span id="signalText" class="value" style="font-weight: bold; color: var(--neon-green);">SCANNING...</span>
         </div>
-
         <div class="panel-card">
             <span class="label">Entry Zone</span>
             <span id="entryVal" class="value">0.00</span>
         </div>
-
         <div class="panel-card">
-            <span class="label">Stop Loss</span>
-            <span id="slVal" class="value" style="color: var(--neon-red);">0.00</span>
-        </div>
-
-        <div class="panel-card">
-            <span class="label">Take Profit (RR 1:2)</span>
+            <span class="label">Target TP</span>
             <span id="tpVal" class="value" style="color: var(--neon-green);">0.00</span>
-        </div>
-
-        <div style="margin-top: auto; font-size: 0.7rem; color: var(--text-dim);">
-            SMC Logic: BOS + CHOCH + FVG Confluence v1.2
         </div>
     </aside>
 
@@ -147,22 +122,15 @@
 </div>
 
 <script>
-    /* JAVASCRIPT SECTION: ENGINE & CHART */
-    let chart, candleSeries;
-    let currentPair = 'BTCUSDT';
-    let currentTF = '5m';
-    let socket;
+    let chart, candleSeries, socket;
     let candleData = [];
 
-    // 1. Initialize Chart
     function initChart() {
         const container = document.getElementById('tv-chart');
         chart = LightweightCharts.createChart(container, {
             layout: { background: { color: '#080a0c' }, textColor: '#d1d4dc' },
             grid: { vertLines: { color: '#161a1e' }, horzLines: { color: '#161a1e' } },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-            rightPriceScale: { borderColor: '#2a2e39' },
-            timeScale: { borderColor: '#2a2e39', timeVisible: true, secondsVisible: false },
+            timeScale: { borderColor: '#2a2e39', timeVisible: true },
         });
 
         candleSeries = chart.addCandlestickSeries({
@@ -170,17 +138,31 @@
             borderVisible: false, wickUpColor: '#00ff88', wickDownColor: '#ff3e3e',
         });
 
-        // Resize handler
         window.addEventListener('resize', () => {
             chart.resize(container.offsetWidth, container.offsetHeight);
         });
     }
 
-    // 2. Connect to Binance WebSocket
-    function connectStream(pair, tf) {
+    async function fetchHistory(pair) {
+        // Ambil data history agar chart tidak kosong saat pertama buka
+        const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=5m&limit=100`);
+        const data = await res.json();
+        const history = data.map(d => ({
+            time: d[0] / 1000,
+            open: parseFloat(d[1]),
+            high: parseFloat(d[2]),
+            low: parseFloat(d[3]),
+            close: parseFloat(d[4])
+        }));
+        candleSeries.setData(history);
+        candleData = history;
+    }
+
+    function connectStream(pair) {
         if (socket) socket.close();
         
-        socket = new WebSocket(`wss://stream.binance.com:9443/ws/${pair.toLowerCase()}@kline_${tf}`);
+        // Gunakan port 443 agar tidak diblokir provider internet
+        socket = new WebSocket(`wss://stream.binance.com:443/ws/${pair.toLowerCase()}@kline_5m`);
 
         socket.onmessage = (event) => {
             const msg = JSON.parse(event.data);
@@ -192,75 +174,42 @@
                 low: parseFloat(k.l),
                 close: parseFloat(k.c)
             };
-
             candleSeries.update(candle);
-            updateSMCEngine(candle);
+            detectBOS(candle);
         };
     }
 
-    // 3. SMC Logic Engine
-    function updateSMCEngine(candle) {
-        // Simpan history candle singkat untuk deteksi BOS
-        if (candleData.length === 0 || candleData[candleData.length-1].time !== candle.time) {
-            candleData.push(candle);
-        } else {
-            candleData[candleData.length-1] = candle;
-        }
-        if (candleData.length > 50) candleData.shift();
-
+    function detectBOS(candle) {
         if (candleData.length < 20) return;
+        const recent = candleData.slice(-10);
+        const high = Math.max(...recent.map(c => c.high));
+        const low = Math.min(...recent.map(c => c.low));
 
-        // Simple BOS (Break of Structure) Detection
-        const lookback = candleData.slice(-15, -1);
-        const highestHigh = Math.max(...lookback.map(c => c.high));
-        const lowestLow = Math.min(...lookback.map(c => c.low));
-
-        const card = document.getElementById('signalCard');
-        const sigText = document.getElementById('signalText');
-
-        // BULLISH BOS SETUP
-        if (candle.close > highestHigh) {
-            card.className = 'panel-card active-buy';
-            sigText.innerText = "🔥 BUY STRONG (BOS)";
-            updateUI(candle.close, 'BUY');
-        } 
-        // BEARISH BOS SETUP
-        else if (candle.close < lowestLow) {
-            card.className = 'panel-card active-sell';
-            sigText.innerText = "🔻 SELL STRONG (BOS)";
-            updateUI(candle.close, 'SELL');
+        if (candle.close > high) {
+            updateUI(candle.close, "🔥 BULLISH BOS", "active-buy");
+        } else if (candle.close < low) {
+            updateUI(candle.close, "🔻 BEARISH BOS", "active-sell");
         }
     }
 
-    function updateUI(price, side) {
-        document.getElementById('probVal').innerText = (Math.floor(Math.random() * 10) + 85) + "%";
+    function updateUI(price, text, css) {
+        document.getElementById('signalCard').className = 'panel-card ' + css;
+        document.getElementById('signalText').innerText = text;
         document.getElementById('entryVal').innerText = price.toFixed(2);
-        
-        if (side === 'BUY') {
-            document.getElementById('slVal').innerText = (price * 0.997).toFixed(2);
-            document.getElementById('tpVal').innerText = (price * 1.006).toFixed(2);
-        } else {
-            document.getElementById('slVal').innerText = (price * 1.003).toFixed(2);
-            document.getElementById('tpVal').innerText = (price * 0.994).toFixed(2);
-        }
+        document.getElementById('tpVal').innerText = (css === 'active-buy' ? price * 1.01 : price * 0.99).toFixed(2);
     }
 
-    function changeTF(tf) {
-        currentTF = tf;
-        const btns = document.querySelectorAll('.tf-btn');
-        btns.forEach(b => b.style.color = b.innerText.toLowerCase() === tf ? '#00ff88' : 'white');
-        connectStream(currentPair, currentTF);
-    }
-
-    // Initialize
-    document.getElementById('pairSelect').addEventListener('change', (e) => {
-        currentPair = e.target.value;
-        connectStream(currentPair, currentTF);
-    });
-
+    // Start App
     initChart();
-    connectStream(currentPair, currentTF);
+    const pair = document.getElementById('pairSelect');
+    
+    async function start(p) {
+        await fetchHistory(p);
+        connectStream(p);
+    }
 
+    pair.addEventListener('change', (e) => start(e.target.value));
+    start('BTCUSDT');
 </script>
 
 </body>
