@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SMC PRO TERMINAL</title>
+    <title>SMC PRO TERMINAL - Live</title>
     
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
@@ -43,43 +43,48 @@
             border-bottom: 1px solid var(--border-color);
             display: flex; align-items: center; justify-content: space-between;
             padding: 0 20px;
+            z-index: 10;
         }
+
+        .logo { font-weight: 900; letter-spacing: 2px; font-size: 1.2rem; }
+        .logo span { color: var(--neon-green); }
 
         .sidebar {
             background: var(--bg-card);
             border-right: 1px solid var(--border-color);
             padding: 15px;
             display: flex; flex-direction: column; gap: 15px;
+            z-index: 5;
         }
 
         .panel-card {
             background: #1e222d; border-radius: 8px; padding: 12px;
             border-left: 4px solid var(--text-dim);
+            transition: all 0.3s ease;
         }
 
-        /* Container Chart harus sangat dominan */
+        .panel-card.buy-active { border-left-color: var(--neon-green); background: rgba(0, 255, 136, 0.05); }
+        .panel-card.sell-active { border-left-color: var(--neon-red); background: rgba(255, 62, 62, 0.05); }
+
         #chart-container { 
             position: relative; 
             width: 100%; 
             height: 100%; 
             background: #000;
-            overflow: hidden;
         }
 
-        #tv-chart { 
-            width: 100%; 
-            height: 100%; 
-        }
+        #tv-chart { width: 100%; height: 100%; }
 
         .status-dot {
             width: 8px; height: 8px; background: var(--neon-green);
             border-radius: 50%; display: inline-block; margin-right: 5px;
+            box-shadow: 0 0 8px var(--neon-green);
         }
 
         @media (max-width: 768px) {
             .dashboard { grid-template-columns: 1fr; grid-template-rows: 60px 140px 1fr; }
-            .sidebar { border-right: none; flex-direction: row; overflow-x: auto; padding: 10px; }
-            .panel-card { min-width: 140px; }
+            .sidebar { border-right: none; flex-direction: row; overflow-x: auto; padding: 10px; height: 140px; }
+            .panel-card { min-width: 150px; height: fit-content; }
         }
     </style>
 </head>
@@ -87,25 +92,25 @@
 
 <div class="dashboard">
     <header>
-        <div class="logo" style="font-weight:900;">SMC<span style="color:var(--neon-green)">PRO</span></div>
+        <div class="logo">SMC<span>PRO</span></div>
         <div style="display: flex; gap: 10px; align-items: center;">
             <select id="pairSelect" style="background:#1e222d; color:white; border:1px solid var(--border-color); padding:5px; border-radius:4px;">
                 <option value="BTCUSDT">BTC/USDT</option>
                 <option value="ETHUSDT">ETH/USDT</option>
                 <option value="SOLUSDT">SOL/USDT</option>
             </select>
-            <div id="live-indicator"><span class="status-dot"></span> <small>LIVE</small></div>
+            <div id="live-indicator"><span class="status-dot"></span> <small id="dbStatus">CONNECTING...</small></div>
         </div>
     </header>
 
     <aside class="sidebar">
-        <div class="panel-card" id="biasCard">
-            <span style="color:var(--text-dim); font-size:10px;">BIAS</span>
-            <div id="signalText" style="font-family:'JetBrains Mono'; font-weight: bold;">WAITING...</div>
+        <div class="panel-card" id="signalCard">
+            <span style="color:var(--text-dim); font-size:10px; text-transform: uppercase;">SMC Signal</span>
+            <div id="signalText" style="font-family:'JetBrains Mono'; font-weight: bold; margin-top: 5px;">SCANNING...</div>
         </div>
         <div class="panel-card">
-            <span style="color:var(--text-dim); font-size:10px;">PRICE</span>
-            <div id="entryVal" style="font-family:'JetBrains Mono';">0.00</div>
+            <span style="color:var(--text-dim); font-size:10px; text-transform: uppercase;">Live Price</span>
+            <div id="priceVal" style="font-family:'JetBrains Mono'; font-size: 1.2rem; margin-top: 5px;">0.00</div>
         </div>
     </aside>
 
@@ -115,43 +120,37 @@
 </div>
 
 <script>
-    // --- 1. CONFIG FIREBASE ---
-    // Pastikan ini diisi dengan config dari project Firebase kamu sendiri
+    // --- 1. FIREBASE CONFIG (OCTA FIRDAUS) ---
     const firebaseConfig = {
-        apiKey: "AIzaSy...", 
-        databaseURL: "https://your-db.firebaseio.com",
-        projectId: "your-project-id",
+        apiKey: "AIzaSyDO8hsgUIrq7CN_96RdPSSFd1okLiTtw0I",
+        authDomain: "sct-trading-octa.firebaseapp.com",
+        databaseURL: "https://sct-trading-octa-default-rtdb.firebaseio.com", 
+        projectId: "sct-trading-octa",
+        storageBucket: "sct-trading-octa.firebasestorage.app",
+        messagingSenderId: "753188973334",
+        appId: "1:753188973334:web:aa4db9efd3ddd521cdbe37"
     };
     
-    // Cegah inisialisasi ganda
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-    }
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+    
+    // Cek koneksi DB
+    db.ref('.info/connected').on('value', (snap) => {
+        document.getElementById('dbStatus').innerText = snap.val() ? "DB CONNECTED" : "DB DISCONNECTED";
+    });
 
     let chart, candleSeries, socket;
     let candleData = [];
 
-    // --- 2. ENGINE CHART ---
+    // --- 2. CHART ENGINE ---
     function initChart() {
         const chartElement = document.getElementById('tv-chart');
         
         chart = LightweightCharts.createChart(chartElement, {
-            layout: { 
-                background: { color: '#080a0c' }, 
-                textColor: '#d1d4dc' 
-            },
-            grid: {
-                vertLines: { color: '#161a1e' },
-                horzLines: { color: '#161a1e' },
-            },
-            timeScale: { 
-                timeVisible: true, 
-                borderColor: '#2a2e39'
-            },
-            rightPriceScale: {
-                borderColor: '#2a2e39'
-            }
+            layout: { background: { color: '#080a0c' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#161a1e' }, horzLines: { color: '#161a1e' } },
+            timeScale: { timeVisible: true, borderColor: '#2a2e39' },
+            rightPriceScale: { borderColor: '#2a2e39' }
         });
 
         candleSeries = chart.addCandlestickSeries({
@@ -159,20 +158,21 @@
             borderVisible: false, wickUpColor: '#00ff88', wickDownColor: '#ff3e3e',
         });
 
-        // OBSERVER: Memaksa chart mengikuti ukuran layar sekecil apapun (PENTING UNTUK HP)
+        // Paksa chart untuk responsive di HP
         const resizeObserver = new ResizeObserver(entries => {
-            if (entries.length === 0 || !entries[0].contentRect) return;
-            const { width, height } = entries[0].contentRect;
-            chart.applyOptions({ width, height });
+            if (entries.length > 0) {
+                const { width, height } = entries[0].contentRect;
+                chart.applyOptions({ width, height });
+            }
         });
         resizeObserver.observe(chartElement);
     }
 
-    // --- 3. LOGIKA DATA ---
-    async function startStream(pair) {
+    // --- 3. BINANCE DATA STREAM ---
+    async function startEngine(pair) {
         if (socket) socket.close();
 
-        // Ambil data history dari Binance
+        // Ambil data history
         try {
             const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=5m&limit=100`);
             const data = await res.json();
@@ -185,11 +185,9 @@
             }));
             candleSeries.setData(history);
             candleData = history;
-        } catch (e) {
-            console.error("Gagal ambil history", e);
-        }
+        } catch (e) { console.error("Error History:", e); }
 
-        // Live WebSocket Port 443
+        // Live Stream
         socket = new WebSocket(`wss://stream.binance.com:443/ws/${pair.toLowerCase()}@kline_5m`);
         socket.onmessage = (event) => {
             const msg = JSON.parse(event.data);
@@ -201,10 +199,11 @@
                 low: parseFloat(k.l),
                 close: parseFloat(k.c)
             };
-            candleSeries.update(liveCandle);
-            document.getElementById('entryVal').innerText = liveCandle.close;
             
-            // Simpan ke array untuk deteksi signal
+            candleSeries.update(liveCandle);
+            document.getElementById('priceVal').innerText = liveCandle.close.toLocaleString();
+            
+            // Manage candle history array
             if (candleData.length > 0 && candleData[candleData.length-1].time === liveCandle.time) {
                 candleData[candleData.length-1] = liveCandle;
             } else {
@@ -212,44 +211,58 @@
                 if (candleData.length > 150) candleData.shift();
             }
             
-            checkSMC(liveCandle, pair);
+            detectSMC(liveCandle, pair);
         };
     }
 
-    // --- 4. DETEKSI SMC & FIREBASE ---
-    function checkSMC(candle, pair) {
+    // --- 4. SMC LOGIC & DATABASE PUSH ---
+    function detectSMC(candle, pair) {
         if (candleData.length < 20) return;
-        const lookback = candleData.slice(-15, -1);
-        const high = Math.max(...lookback.map(c => c.high));
-        const low = Math.min(...lookback.map(c => c.low));
+        
+        const recent = candleData.slice(-15, -1);
+        const high = Math.max(...recent.map(c => c.high));
+        const low = Math.min(...recent.map(c => c.low));
 
-        let signal = "";
-        if (candle.close > high) signal = "BULLISH BOS";
-        if (candle.close < low) signal = "BEARISH BOS";
+        const card = document.getElementById('signalCard');
+        const text = document.getElementById('signalText');
 
-        if (signal !== "") {
-            document.getElementById('signalText').innerText = signal;
-            document.getElementById('signalText').style.color = signal.includes("BULLISH") ? "#00ff88" : "#ff3e3e";
-            
-            // Simpan ke Firebase (Hanya log sederhana)
-            db.ref('smc_logs').push({
-                pair: pair,
-                signal: signal,
-                price: candle.close,
-                time: new Date().toISOString()
-            });
+        if (candle.close > high) {
+            updateSignalUI(card, text, "🔥 BULLISH BOS", "buy-active", "#00ff88");
+            pushToFirebase(pair, "BULLISH BOS", candle.close);
+        } else if (candle.close < low) {
+            updateSignalUI(card, text, "🔻 BEARISH BOS", "sell-active", "#ff3e3e");
+            pushToFirebase(pair, "BEARISH BOS", candle.close);
         }
     }
 
-    // Eksekusi Startup
+    function updateSignalUI(card, text, msg, css, color) {
+        card.className = "panel-card " + css;
+        text.innerText = msg;
+        text.style.color = color;
+    }
+
+    let lastPushTime = 0;
+    function pushToFirebase(pair, type, price) {
+        const now = Date.now();
+        // Hanya simpan ke Firebase sekali setiap 1 menit per pair agar tidak spam
+        if (now - lastPushTime > 60000) {
+            db.ref('trading_logs').push({
+                pair: pair,
+                type: type,
+                price: price,
+                time: new Date().toLocaleTimeString()
+            });
+            lastPushTime = now;
+        }
+    }
+
+    // Run
     window.onload = () => {
         initChart();
-        startStream('BTCUSDT');
-        
-        document.getElementById('pairSelect').onchange = (e) => {
-            startStream(e.target.value);
-        };
+        startEngine('BTCUSDT');
+        document.getElementById('pairSelect').onchange = (e) => startEngine(e.target.value);
     };
 </script>
+
 </body>
 </html>
