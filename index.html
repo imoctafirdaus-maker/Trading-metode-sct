@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SMC PRO TERMINAL - Real-Time Analysis</title>
+    <title>SMC PRO TERMINAL - Firebase Integrated</title>
     
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;900&display=swap" rel="stylesheet">
 
     <style>
@@ -45,9 +47,9 @@
         .logo span { color: var(--neon-green); }
         .controls { display: flex; gap: 10px; align-items: center; }
         
-        select, .tf-btn {
+        select {
             background: #1e222d; border: 1px solid var(--border-color);
-            color: white; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+            color: white; padding: 5px 10px; border-radius: 4px; cursor: pointer;
         }
 
         .sidebar {
@@ -61,28 +63,33 @@
         .panel-card {
             background: #1e222d; border-radius: 8px; padding: 12px;
             border-left: 4px solid var(--text-dim);
+            transition: all 0.3s ease;
         }
 
-        .panel-card.active-buy { border-left-color: var(--neon-green); box-shadow: 0 0 15px rgba(0, 255, 136, 0.1); }
-        .panel-card.active-sell { border-left-color: var(--neon-red); box-shadow: 0 0 15px rgba(255, 62, 62, 0.1); }
+        .panel-card.active-buy { border-left-color: var(--neon-green); background: rgba(0, 255, 136, 0.05); }
+        .panel-card.active-sell { border-left-color: var(--neon-red); background: rgba(255, 62, 62, 0.05); }
 
         .label { color: var(--text-dim); font-size: 0.7rem; text-transform: uppercase; }
         .value { font-family: 'JetBrains Mono', monospace; font-size: 1rem; display: block; margin-top: 5px; }
 
-        #chart-container { position: relative; width: 100%; height: 100%; background: var(--bg-dark); }
         #tv-chart { width: 100%; height: 100%; }
 
         .status-dot {
             width: 8px; height: 8px; background: var(--neon-green);
             border-radius: 50%; display: inline-block; margin-right: 5px;
-            box-shadow: 0 0 8px var(--neon-green);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 255, 136, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
         }
 
         @media (max-width: 768px) {
-            .dashboard { grid-template-columns: 1fr; grid-template-rows: 60px 180px 1fr; }
-            .sidebar { border-right: none; border-bottom: 1px solid var(--border-color); flex-direction: row; overflow-x: auto; padding: 10px; }
-            .panel-card { min-width: 150px; padding: 8px; }
-            .logo { font-size: 1rem; }
+            .dashboard { grid-template-columns: 1fr; grid-template-rows: 60px 150px 1fr; }
+            .sidebar { border-right: none; flex-direction: row; overflow-x: auto; padding: 10px; }
+            .panel-card { min-width: 140px; }
         }
     </style>
 </head>
@@ -97,21 +104,21 @@
                 <option value="ETHUSDT">ETH/USDT</option>
                 <option value="SOLUSDT">SOL/USDT</option>
             </select>
-            <div id="live-indicator"><span class="status-dot"></span> <small>LIVE</small></div>
+            <div id="live-indicator"><span class="status-dot"></span> <small>DATABASE CONNECTED</small></div>
         </div>
     </header>
 
     <aside class="sidebar">
         <div id="signalCard" class="panel-card">
             <span class="label">SMC Bias</span>
-            <span id="signalText" class="value" style="font-weight: bold; color: var(--neon-green);">SCANNING...</span>
+            <span id="signalText" class="value">SCANNING...</span>
         </div>
         <div class="panel-card">
-            <span class="label">Entry Zone</span>
+            <span class="label">Entry Price</span>
             <span id="entryVal" class="value">0.00</span>
         </div>
         <div class="panel-card">
-            <span class="label">Target TP</span>
+            <span class="label">Profit Target</span>
             <span id="tpVal" class="value" style="color: var(--neon-green);">0.00</span>
         </div>
     </aside>
@@ -122,8 +129,24 @@
 </div>
 
 <script>
+    // --- CONFIGURASI FIREBASE ANDA ---
+    const firebaseConfig = {
+        apiKey: "MASUKKAN_API_KEY_ANDA",
+        authDomain: "PROYEK_ANDA.firebaseapp.com",
+        databaseURL: "https://PROYEK_ANDA-default-rtdb.firebaseio.com",
+        projectId: "PROYEK_ANDA",
+        storageBucket: "PROYEK_ANDA.appspot.com",
+        messagingSenderId: "ID_ANDA",
+        appId: "APP_ID_ANDA"
+    };
+
+    // Inisialisasi Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
     let chart, candleSeries, socket;
     let candleData = [];
+    let lastSignalTime = 0;
 
     function initChart() {
         const container = document.getElementById('tv-chart');
@@ -131,6 +154,7 @@
             layout: { background: { color: '#080a0c' }, textColor: '#d1d4dc' },
             grid: { vertLines: { color: '#161a1e' }, horzLines: { color: '#161a1e' } },
             timeScale: { borderColor: '#2a2e39', timeVisible: true },
+            rightPriceScale: { borderColor: '#2a2e39' }
         });
 
         candleSeries = chart.addCandlestickSeries({
@@ -144,24 +168,23 @@
     }
 
     async function fetchHistory(pair) {
-        // Ambil data history agar chart tidak kosong saat pertama buka
-        const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=5m&limit=100`);
-        const data = await res.json();
-        const history = data.map(d => ({
-            time: d[0] / 1000,
-            open: parseFloat(d[1]),
-            high: parseFloat(d[2]),
-            low: parseFloat(d[3]),
-            close: parseFloat(d[4])
-        }));
-        candleSeries.setData(history);
-        candleData = history;
+        try {
+            const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=5m&limit=100`);
+            const data = await res.json();
+            const history = data.map(d => ({
+                time: d[0] / 1000,
+                open: parseFloat(d[1]),
+                high: parseFloat(d[2]),
+                low: parseFloat(d[3]),
+                close: parseFloat(d[4])
+            }));
+            candleSeries.setData(history);
+            candleData = history;
+        } catch (e) { console.error("Gagal ambil history", e); }
     }
 
     function connectStream(pair) {
         if (socket) socket.close();
-        
-        // Gunakan port 443 agar tidak diblokir provider internet
         socket = new WebSocket(`wss://stream.binance.com:443/ws/${pair.toLowerCase()}@kline_5m`);
 
         socket.onmessage = (event) => {
@@ -175,21 +198,52 @@
                 close: parseFloat(k.c)
             };
             candleSeries.update(candle);
-            detectBOS(candle);
+            
+            // Simpan data terbaru ke array untuk analisa BOS
+            if (candleData.length > 0 && candleData[candleData.length-1].time === candle.time) {
+                candleData[candleData.length-1] = candle;
+            } else {
+                candleData.push(candle);
+                if (candleData.length > 100) candleData.shift();
+            }
+            
+            detectBOS(candle, pair);
         };
     }
 
-    function detectBOS(candle) {
+    function detectBOS(candle, pair) {
         if (candleData.length < 20) return;
-        const recent = candleData.slice(-10);
-        const high = Math.max(...recent.map(c => c.high));
-        const low = Math.min(...recent.map(c => c.low));
+        
+        const lookback = candleData.slice(-15, -1);
+        const high = Math.max(...lookback.map(c => c.high));
+        const low = Math.min(...lookback.map(c => c.low));
+
+        let signalType = null;
 
         if (candle.close > high) {
+            signalType = "BULLISH";
             updateUI(candle.close, "🔥 BULLISH BOS", "active-buy");
         } else if (candle.close < low) {
+            signalType = "BEARISH";
             updateUI(candle.close, "🔻 BEARISH BOS", "active-sell");
         }
+
+        // Kirim ke Firebase jika ada sinyal baru (mencegah spam per detik)
+        if (signalType && (Date.now() - lastSignalTime > 300000)) { // 5 menit delay per sinyal
+            sendToFirebase(pair, signalType, candle.close);
+            lastSignalTime = Date.now();
+        }
+    }
+
+    function sendToFirebase(pair, type, price) {
+        const signalId = Date.now();
+        database.ref('trading_signals/' + signalId).set({
+            pair: pair,
+            type: type,
+            price: price,
+            timestamp: new Date().toLocaleString()
+        });
+        console.log("Signal saved to Firebase!");
     }
 
     function updateUI(price, text, css) {
@@ -199,16 +253,16 @@
         document.getElementById('tpVal').innerText = (css === 'active-buy' ? price * 1.01 : price * 0.99).toFixed(2);
     }
 
-    // Start App
+    // Jalankan Aplikasi
     initChart();
-    const pair = document.getElementById('pairSelect');
+    const pairSelector = document.getElementById('pairSelect');
     
     async function start(p) {
         await fetchHistory(p);
         connectStream(p);
     }
 
-    pair.addEventListener('change', (e) => start(e.target.value));
+    pairSelector.addEventListener('change', (e) => start(e.target.value));
     start('BTCUSDT');
 </script>
 
